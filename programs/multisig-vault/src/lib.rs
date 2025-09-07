@@ -93,8 +93,9 @@ pub mod multisig_vault {
             ErrorCode::NotEnoughApprovals
         );
         // Check vault has enough balance
+        let vault_lamports = vault.to_account_info().lamports();
         require!(
-            ctx.accounts.vault.to_account_info().lamports() >= proposal.amount,
+            vault_lamports >= proposal.amount,
             ErrorCode::InvalidVault
         );
         proposal.executed = true;
@@ -124,7 +125,7 @@ pub mod multisig_vault {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         transfer(
             CpiContext::new(
-                ctx.accounts.system_program.to_account_infos(),
+                ctx.accounts.system_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.depositor.to_account_info(),
                     to: ctx.accounts.vault.to_account_info(),
@@ -174,6 +175,7 @@ pub struct Proposal {
     pub vault: Pubkey,          // associated vault
     pub to: Pubkey,             // destination address
     pub amount: u64,            // amount to transfer in lamports
+    #[max_len(10)]
     pub approvals: Vec<Pubkey>, // list of approvers
     pub executed: bool,         // wherther peoposal was executed
     pub proposal_id: u64,       // unique proposal id
