@@ -12,29 +12,153 @@ pub mod multisig_vault {
         owners: Vec<Pubkey>,
         threshold: u8,
     ) -> Result<()> {
+        require!(threshold > 0, ErrorCode::InvalidThreshold);
+        require!(
+            threshold as usize <= owners.len(),
+            ErrorCode::InvalidThreshold
+        );
+        require!(owners.len() <= 10, ErrorCode::TooManyOwners);
+
+        let vault = &mut ctx.accounts.vault;
+        vault.owner = owners;
+        vault.threshold = threshold;
+        vault.bump = ctx.bumps.vault;
+        vault.proposal_count = 0;
+
         Ok(())
     }
 
     pub fn create_proposal(ctx: Context<CreateProposal>, to: Pubkey, amount: u64) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        let proposal = &mut ctx.accounts.proposal;
+
+        require!(
+            vault.owner.contains(&ctx.accounts.proposer.key()),
+            ErrorCode::NotOwner
+        );
+
+        proposal.vault = vault.key();
+        proposal.to = to;
+        proposal.amount = amount;
+        proposal.approvals = vec![];
+        proposal.executed = false;
+        proposal.proposal_id = vault.proposal_count;
+        proposal.bump = ctx.bumps.proposal;
+
+        vault.proposal_count += 1;
+
+        msg!(
+            "proposal {} created: {} SOL to {}",
+            proposal.proposal_id,
+            amount,
+            to
+        );
         Ok(())
     }
 
     pub fn approve(ctx: Context<Approve>) -> Result<()> {
+        let proposal = &mut ctx.accounts.proposal;
+        let signer = ctx.accounts.signer.key();
+
+        require!(
+            ctx.accounts.vault.owner.contains(&signer),
+            ErrorCode::NotOwner
+        );
+        require!(
+            !proposal.approvals.contains(&signer),
+            ErrorCode::AlreadyApproved
+        );
+        require!(!proposal.executed, ErrorCode::AlreadyExecuted);
+
+        proposal.approvals.push(&signer);
+
+        msg!(
+            "Proposal {} approved by {} ({}/{})",
+            proposal.proposal_id,
+            signer,
+            proposal.approvals.len(),
+            ctx.accounts.vault.threshold
+        );
+
         Ok(())
     }
 
     pub fn execute(ctx: Context<Execute>) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        let proposal = &mut ctx.accounts.proposal;
+
+        require!(!proposal.executed, ErrorCode::AlreadyExecuted);
+        require!(
+            proposal.approvals.len() as u8 >= vault.threshold,
+            ErrorCode::NotEnoughApprovals
+        );
+        // Check vault has enough balance
+        require!(
+            ctx.accounts.vault.to_account_info().lamports() >= proposal.amount,
+            ErrorCode::InvalidAmount
+        );
+        proposal.executed = true;
+
+        let seeds = &[
+            b"vault",
+            vault.to_account_info().owner.as_ref(),
+            &[vault.bump],
+        ];
+        let signer_seeds = &[&seeds[..]];
+
+        transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.try_lamports(),
+                Transfer {
+                    from: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.to.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            proposal.amount,
+        )?;
+
         Ok(())
     }
 
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_infos(),
+                Transfer {
+                    from: ctx.accounts.depositor.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        msg!("Deposited {} SOL to vault", amount);
         Ok(())
     }
 
     pub fn cancel_proposal(ctx: Context<CancelProposal>) -> Result<()> {
+        let proposal = &mut ctx.accounts.proposal;
+        require!(!proposal.executed, ErrorCode::AlreadyExecuted);
+        require!(
+            ctx.accounts
+                .vault
+                .owner
+                .contains(&ctx.accounts.canceller.key()),
+            ErrorCode::NotOwner
+        );
+
+        proposal.executed = true;
+
+        msg!(
+            "Proposal {} cancelled by {}",
+            proposal.proposal_id,
+            ctx.accounts.canceller.key()
+        );
         Ok(())
     }
 }
+
 
 #[account]
 pub struct Vault {
