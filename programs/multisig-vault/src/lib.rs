@@ -70,7 +70,7 @@ pub mod multisig_vault {
         );
         require!(!proposal.executed, ErrorCode::AlreadyExecuted);
 
-        proposal.approvals.push(&signer);
+        proposal.approvals.push(signer);
 
         msg!(
             "Proposal {} approved by {} ({}/{})",
@@ -95,7 +95,7 @@ pub mod multisig_vault {
         // Check vault has enough balance
         require!(
             ctx.accounts.vault.to_account_info().lamports() >= proposal.amount,
-            ErrorCode::InvalidAmount
+            ErrorCode::InvalidVault
         );
         proposal.executed = true;
 
@@ -107,8 +107,8 @@ pub mod multisig_vault {
         let signer_seeds = &[&seeds[..]];
 
         transfer(
-            CpiContext::new(
-                ctx.accounts.system_program.try_lamports(),
+            CpiContext::new_with_signer(
+                ctx.accounts.system_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.vault.to_account_info(),
                     to: ctx.accounts.to.to_account_info(),
