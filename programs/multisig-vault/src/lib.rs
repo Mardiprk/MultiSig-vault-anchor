@@ -86,41 +86,37 @@ pub mod multisig_vault {
     pub fn execute(ctx: Context<Execute>) -> Result<()> {
         let vault = &mut ctx.accounts.vault;
         let proposal = &mut ctx.accounts.proposal;
-
+    
         require!(!proposal.executed, ErrorCode::AlreadyExecuted);
         require!(
             proposal.approvals.len() as u8 >= vault.threshold,
             ErrorCode::NotEnoughApprovals
         );
-        // Check vault has enough balance
-        let vault_lamports = vault.to_account_info().lamports();
+    
+        // Optional: keep the vault rent-exempt
+        // use anchor_lang::prelude::Rent;
+        let rent = Rent::get()?;
+        let data_len = ctx.accounts.vault.to_account_info().data_len();
+        let min_balance = rent.minimum_balance(data_len);
+    
+        let vault_lamports = ctx.accounts.vault.to_account_info().lamports();
         require!(
-            vault_lamports >= proposal.amount,
-            ErrorCode::InvalidVault
+            vault_lamports.saturating_sub(proposal.amount) >= min_balance,
+            ErrorCode::InsufficientFunds
         );
+    
         proposal.executed = true;
-
-        let seeds = &[
-            b"vault",
-            vault.to_account_info().owner.as_ref(),
-            &[vault.bump],
-        ];
-        let signer_seeds = &[&seeds[..]];
-
-        transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.to.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            proposal.amount,
-        )?;
-
+    
+        // Manually move lamports (no CPI, no signer seeds needed)
+        let from_info = ctx.accounts.vault.to_account_info();
+        let to_info = ctx.accounts.to.to_account_info();
+    
+        **from_info.try_borrow_mut_lamports()? -= proposal.amount;
+        **to_info.try_borrow_mut_lamports()? += proposal.amount;
+    
         Ok(())
     }
+    
 
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         transfer(
@@ -205,7 +201,9 @@ pub struct CreateProposal<'info> {
         init,
         payer = proposer,
         space = 8 + 32 + 32 + 8 + 4 + (32 * 10) + 1 + 8 + 1, // all proposal fields + 10 max approvals
-        seeds = [],
+        seeds = [b"proposal",
+            vault.key().as_ref(),
+            &vault.proposal_count.to_le_bytes()],
         bump
     )]
     pub proposal: Account<'info, Proposal>,
@@ -231,21 +229,38 @@ pub struct Approve<'info> {
 
 #[derive(Accounts)]
 pub struct Execute<'info> {
-    #[account(mut)]
-    pub proposal: Account<'info, Proposal>,
     #[account(
         mut,
+        seeds = [
+            b"proposal",
+            vault.key().as_ref(),
+            &proposal.proposal_id.to_le_bytes()
+        ],
+        bump = proposal.bump
+    )]
+    pub proposal: Account<'info, Proposal>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault_creator.key().as_ref()], // match CreateVault
+        bump = vault.bump,
         constraint = proposal.vault == vault.key() @ ErrorCode::InvalidVault
     )]
     pub vault: Account<'info, Vault>,
-    /// CHECK: Destination account validated via proposal.to
+
+    /// CHECK: the payer who created the vault
+    pub vault_creator: UncheckedAccount<'info>,
+
+    /// CHECK: validated against proposal.to
     #[account(
         mut,
         constraint = to.key() == proposal.to @ ErrorCode::InvalidDestination
     )]
     pub to: UncheckedAccount<'info>,
+
     pub system_program: Program<'info, System>,
 }
+
 
 #[derive(Accounts)]
 pub struct Deposit<'info> {

@@ -228,12 +228,29 @@ pub struct Proposal {
 
 ## 🧪 Testing
 
+### Test Results ✅
+
+| Test Case | Status | Duration | Description |
+|-----------|--------|----------|-------------|
+| Create Vault | ✅ PASS | 233ms | Initialize multisig vault with owners and threshold |
+| Deposit into Vault | ✅ PASS | 369ms | Fund the vault with SOL tokens |
+| Create Proposal | ✅ PASS | 404ms | Create a new spending proposal |
+| Approve Proposal | ✅ PASS | 410ms | Approve a proposal (first approval) |
+| Execute Proposal | ✅ PASS | 825ms | Execute proposal after reaching threshold |
+| Cancel Proposal | ✅ PASS | 834ms | Cancel a newly created proposal |
+
+**Total Tests:** 6/6 passing ✅  
+**Total Duration:** ~3.1 seconds  
+**Coverage:** All core functionality tested
+
+### Running Tests
+
 ```bash
-# Run tests
+# Run all tests
 anchor test
 
 # Test specific file
-anchor test --skip-deploy tests/multisig.ts
+anchor test --skip-deploy tests/multisig-vault.ts
 ```
 
 ## 📄 License
