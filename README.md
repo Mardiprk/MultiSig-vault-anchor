@@ -1,8 +1,4 @@
 # 🏦 MultiSig Vault - Solana Program
-
-A secure multi-signature wallet implementation on Solana using the Anchor framework. Requires multiple signatures from authorized owners before executing any transaction.
-
-
 <div align="center">
 
 ![Solana](https://img.shields.io/badge/Solana-9945FF?style=for-the-badge&logo=solana&logoColor=white)
@@ -11,6 +7,8 @@ A secure multi-signature wallet implementation on Solana using the Anchor framew
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 
 </div>
+
+A secure multi-signature wallet implementation on Solana using the Anchor framework. Requires multiple signatures from authorized owners before executing any transaction.
 
 ## 🎯 Overview
 
